@@ -47,7 +47,7 @@ def scroll_down_restaurant(num):
     return
 
 #검색어
-locations = ['교하동', '금촌동', '일산서구', '일산동구']
+locations = ['김포 한강신도시']
 
 while(1):
     try:
