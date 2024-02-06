@@ -1,63 +1,208 @@
 from selenium import webdriver as wb
 from selenium.webdriver.common.by import By
-#from bs4 import BeautifulSoup as bs
 from selenium.webdriver.chrome.options import Options
-import random
 from selenium.webdriver.common.action_chains import ActionChains
 
-
-# 마우스를 menu 요소 중앙으로 이동한 뒤 hidden_submenu 요소를 클릭하는 것을 실행
-
-
-import re
-import random
-import time
 import pandas as pd
+import time
+import glob
+import datetime
+import functools
+import re
+import os
+import multiprocessing
+functools.lru_cache(maxsize=10000)
+
+
+proc=[]
+def get_write_reviews(index, list, list1):
+
+    for i in range(index - 1, index):
+        concat(list1)
+        try:
+
+            imsi = pd.read_csv('./{}_음식점_{}_sum.csv'.format(list1,
+                                                            datetime.datetime.now().strftime('%Y%m%d')))
+            print(imsi)
+            res_listed = imsi['names'].to_list()
+            print(type(res_listed))
+            print(res_listed)
+        except:
+            print('파일없음(처음일경우 나옴.)')
+
+        base_url = 'https://map.naver.com/p/search/{} 일산서구 {} 음식점'.format(list1, list)
+        driver = wb.Chrome(options=options)
+        # driver.implicitly_wait(0.5)
+
+        try:
+            driver.get(base_url)
+            time.sleep(2)
+        except:
+            print('drivet.get')
+            exit(1)
+
+        iframe_element = driver.find_element(By.ID, "searchIframe")
+        driver.switch_to.frame(iframe_element)
+        time.sleep(1)
+
+        action = ActionChains(driver)
+
+        reviews = []
+        page = driver.find_element(By.CLASS_NAME, 'eUTV2')
+
+        driver.execute_script("arguments[0].click();", page)
+        time.sleep(1)
+        restaurant_page_down()
+
+        res_lists = driver.find_elements(By.CLASS_NAME, 'UEzoS')
+        print('검색된 음식점 갯수:', len(res_lists))
+
+        dup_num = 0
+        for res_list in res_lists:  # 식당명 가져와서 리뷰 가져오는 부분
+            driver.switch_to.default_content()
+            iframe_element = driver.find_element(By.ID, "searchIframe")
+            driver.switch_to.frame(iframe_element)
+
+            reviews = []
+            res_names = []
+            try:
+                res_name = res_list.find_element(By.CLASS_NAME, 'TYaxT').text
+
+            except:
+                print('리스트 반복중 엘레먼트 못가져옴')
+                continue
+            try:
+                if res_name in res_listed:
+                    dup_num = dup_num + 1
+                    print('중복된 카페 제외', dup_num, res_name)
+                    continue
+            except:
+                print('파일없음(처음일경우 나옴).')
+
+            sample = res_list.find_element(By.CLASS_NAME, 'tzwk0')
+            driver.execute_script("arguments[0].click();", sample)
+            time.sleep(1)
+
+            driver.switch_to.default_content()
+            iframe_element = driver.find_element(By.ID, "entryIframe")
+            driver.switch_to.frame(iframe_element)
+
+            time.sleep(1)
+            review_links = driver.find_elements(By.CLASS_NAME, 'tpj9w')
+            for link in review_links:
+                if link.text == '리뷰':
+                    driver.execute_script("arguments[0].click();", link)
+
+            time.sleep(1)
+            # 아래로 스크롤 후 더보기 클릭 가장 밑으로 내려간후에
+            num = 0
+            schroll_count = 0
+            for i in range(300):
+                try:
+                    driver.execute_script("window.scrollTo(0, document.documentElement.scrollHeight);")
+                    time.sleep(0.1)
+                except:
+                    continue
+
+                try:
+
+                    sample = driver.find_element(By.CLASS_NAME, 'fvwqf')
+                    if sample:
+                        driver.execute_script("arguments[0].click();", sample)
+                        num = 0
+                        schroll_count += 1
+                    if schroll_count % 5 == 0:
+                        print(schroll_count)
+                except:
+                    num += 1
+                    if num == 5:
+                        break
+
+            review_class = driver.find_elements(By.CLASS_NAME, 'xHaT3')
+            print('음식점이름:', res_name, '   리뷰갯수:', len(review_class))
+            text = ' '
+
+            for idx, r_view in enumerate(review_class):
+
+                try:
+                    sample = r_view.find_element(By.CLASS_NAME, 'rvCSr')
+                except:
+                    text = text + ' ' + re.compile('[^가-힣]').sub(
+                        ' ', r_view.find_element(By.CLASS_NAME, 'zPfVt').text)
+                    continue
+
+                driver.execute_script("arguments[0].click();", sample)
+
+                # time.sleep(0.1)
+                text = text + ' ' + re.compile('[^가-힣]').sub(' ', r_view.find_element(By.CLASS_NAME,
+                                                                                      'zPfVt').text)
+
+            reviews.append(text)
+            print('{} : 리뷰길이 :{}'.format(res_name, len(text)))
+            # xHaT3(리뷰클래스)찾아서 더보기가 있으면 더보기 클릭 없으면 리뷰에 있는 텍스트 가져오기
+            # zPfVt(리뷰)
+            # rvCSr(리뷰더보기)
+
+            df_list = pd.DataFrame()
+            print('저장전:', res_name)
+            df_list['names'] = [res_name]
+            df_list['reviews'] = reviews
+            df_list['addr1'] = list1
+            df_list['addr2'] = list
+            print('저장후:', res_name)
+            print(type(res_name))
+            print(df_list)
+            driver.switch_to.default_content()
+            iframe_element = driver.find_element(By.ID, "searchIframe")
+            driver.switch_to.frame(iframe_element)
+
+            time.sleep(0.5)
+
+            df_list.to_csv('./crawling_data/{}_{}_음식점_{}.csv'.format(list1, list, res_name),
+                           index=False)
+
+        driver.close()
+        time.sleep(2)
+
+def concat(res):
+    last_data = []
+
+    data_paths = glob.glob('./crawling_data/*')
+    df = pd.DataFrame()
+    for path in data_paths:
+        df_temp = pd.read_csv(path)
+        df_temp.dropna(inplace=True)
+        df = pd.concat([df, df_temp])
+    if not df.empty:
+        # Check if 'keyword' column is present in the DataFrame
+        if 'keyword' in df.columns:
+            print(df['keyword'].value_counts())
+        else:
+            print("Column 'keyword' not found in the DataFrame.")
+
+        df.info()
+        df.drop_duplicates(subset='names',inplace=True)
+        df.info()
+        df.to_csv('./{}_음식점_{}_sum.csv'.format(res,datetime.datetime.now().strftime('%Y%m%d')),index=False)
+        print('con저장하고난후')
+    else:
+        print("DataFrame is empty. No CSV file generated.")
 
 def restaurant_page_down():
     while(1):
-        first_restaurant_list = driver.find_elements(By.CLASS_NAME, 'UEzoS')
-        print('들어옴')
-        action.move_to_element(first_restaurant_list[-1]).perform()
-        time.sleep(0.5)
-        last_restaurant_list = driver.find_elements(By.CLASS_NAME, 'UEzoS')
-        print('들어옴1')
-        if first_restaurant_list == last_restaurant_list:
-            return 0
-        else:
-            print('page down')
-            continue
-        print('들어옴2')
-def scroll():
-    try:
-        # 페이지 내 스크롤 높이 받아오기
-        last_page_height = driver.execute_script("return document.documentElement.scrollHeight")
-        while True:
-            # 임의의 페이지 로딩 시간 설정
-            # PC환경에 따라 로딩시간 최적화를 통해 scraping 시간 단축 가능
-            pause_time = random.uniform(0.5,0.7)
-            # 페이지 최하단까지 스크롤
-            action.execute_script("window.scrollTo(0, document.documentElement.scrollHeight);")
-            # 페이지 로딩 대기
-            time.sleep(pause_time)
-            # 무한 스크롤 동작을 위해 살짝 위로 스크롤(i.e., 페이지를 위로 올렸다가 내리는 제스쳐)
-            driver.execute_script("window.scrollTo(0, document.documentElement.scrollHeight-50)")
-            time.sleep(pause_time)
-            # 페이지 내 스크롤 높이 새롭게 받아오기
-            new_page_height = driver.execute_script("return document.documentElement.scrollHeight")
-            # 스크롤을 완료한 경우(더이상 페이지 높이 변화가 없는 경우)
-            if new_page_height == last_page_height:
-                print("스크롤 완료")
-                break
+        try:
+            first_restaurant_list = driver.find_elements(By.CLASS_NAME, 'UEzoS')
+            action.move_to_element(first_restaurant_list[-1]).perform()
+            time.sleep(0.4)
+            last_restaurant_list = driver.find_elements(By.CLASS_NAME, 'UEzoS')
 
-            # 스크롤 완료하지 않은 경우, 최하단까지 스크롤
+            if first_restaurant_list == last_restaurant_list:
+                return 0
             else:
-                last_page_height = new_page_height
-
-    except Exception as e:
-        print("에러 발생: ", e)
-
-
+                #print('page down')
+                continue
+        except:
+            continue
 # f-string
 options = Options()
 key_count = 0
@@ -66,124 +211,193 @@ options.add_argument('User-Agent=' + user_agent)
 options.add_argument('lang=ko_KR')
 options.add_argument("disable-infobars")
 options.add_argument("--disable-extensions")
-#prefs = {'profile.default_content_setting_values': {'cookies' : 2, 'images': 2, 'plugins' : 2, 'popups': 2, 'geolocation': 2, 'notifications' : 2, 'auto_select_certificate': 2, 'fullscreen' : 2, 'mouselock' : 2, 'mixed_script': 2, 'media_stream' : 2, 'media_stream_mic' : 2, 'media_stream_camera': 2, 'protocol_handlers' : 2, 'ppapi_broker' : 2, 'automatic_downloads': 2, 'midi_sysex' : 2, 'push_messaging' : 2, 'ssl_cert_decisions': 2, 'metro_switch_to_desktop' : 2, 'protected_media_identifier': 2, 'app_banner': 2, 'site_engagement' : 2, 'durable_storage' : 2}}
-#options.add_experimental_option('prefs', prefs)
-
-# options.add_argument('headless')
-# options.add_argument('window-size=1920x1080')
-# options.add_argument("disable-gpu")
 
 
+prefs = {'profile.default_content_setting_values': {
+    'cookies' : 50, 'images': 0, 'plugins' : 2, 'popups': 2,'geolocation': 2, 'notifications' : 2,
+    'auto_select_certificate': 2, 'fullscreen' : 2, 'mouselock' : 2, 'mixed_script': 2, 'media_stream' : 2,
+    'media_stream_mic' : 2, 'media_stream_camera': 2, 'protocol_handlers' : 2, 'ppapi_broker' : 2,
+    'automatic_downloads': 2, 'midi_sysex' : 2, 'push_messaging' : 2, 'ssl_cert_decisions': 2,
+    'metro_switch_to_desktop' : 2, 'protected_media_identifier': 2, 'app_banner': 2, 'site_engagement' : 2,
+    'durable_storage' : 2}}
 
+options.add_experimental_option('prefs', prefs)
+options.add_argument('headless')
+options.add_argument("disable-gpu")
+
+
+addr1_list=['고양시']
+addr2_list=['덕이동','가좌동','탄현동','대화동','법곳동''일산동','정발산동','주엽동','마두동','문봉동','백석동','사리현동','마두동'
+            ,'장항동','식사동','성석동','마두동','중산동','정발산동','풍동']
+#addr2_list=['덕이동','가좌동','탄현동','대화동','법곳동''일산동','정발산동','주엽동','마두동','문봉동','백석동','사리현동','마두동'
+ #           ,'장항동','식사동','성석동','마두동','중산동','정발산동','풍동']
 
 options.add_argument('--start-maximized')
-
-search_list = ['고양시']
-for list in search_list:
-    base_url = 'https://map.naver.com/p/search/{} 음식점'.format(list)
-    driver = wb.Chrome(options=options)
-
+while(1):
     try:
-        driver.get(base_url)
-        time.sleep(2)
-    except:
-        print('drivet.get')
-        exit(1)
-    iframe_element = driver.find_element(By.ID, "searchIframe")
-    driver.switch_to.frame(iframe_element)
-    time.sleep(2)
 
-    action = ActionChains(driver)
+        for list1 in addr1_list:
 
-    reviews = []
-    res_names=[]
+            for list in addr2_list:
 
-    restaurant_page_down()
-    # page_num=0
-    # for i in range(100):
-    #     driver.execute_script("window.scrollTo(0, document.documentElement.scrollHeight);")
-    #     time.sleep(0.2)
-    #
-    #     try:
-    #         sample = driver.find_elements(By.CLASS_NAME, 'mBN2s')
-    #     except:
-    #         continue
-    # for i in sample:
-    #     print(i.text)
+                for index in range(1,7): #음식점 페이지는 최대 1-6 6개
 
-    res_list = driver.find_elements(By.CLASS_NAME, 'UEzoS')
-    for list in res_list:   #식당명 가져와서 리뷰 가져오는 부분
+                    concat(list1)
+                    try:
+
+                        imsi = pd.read_csv('./{}_음식점_{}_sum.csv'.format(list1,
+                                                                        datetime.datetime.now().strftime('%Y%m%d')))
+                        print(imsi)
+                        res_listed = imsi['names'].to_list()
+                        print(type(res_listed))
+                        print(res_listed)
+                    except:
+                        print('파일없음(처음일경우 나옴.)')
+
+                    base_url = 'https://map.naver.com/p/search/{} 일산서구 {} 음식점'.format(list1, list)
+                    driver = wb.Chrome(options=options)
+                    # driver.implicitly_wait(0.5)
+
+                    try:
+                        driver.get(base_url)
+                        time.sleep(2)
+                    except:
+                        print('drivet.get')
+                        exit(1)
+
+                    iframe_element = driver.find_element(By.ID, "searchIframe")
+                    driver.switch_to.frame(iframe_element)
+                    time.sleep(1)
+
+                    action = ActionChains(driver)
+
+                    reviews = []
+                    page = driver.find_element(By.CLASS_NAME, 'eUTV2')
+
+                    driver.execute_script("arguments[0].click();", page)
+                    time.sleep(1)
+                    restaurant_page_down()
+
+                    res_lists = driver.find_elements(By.CLASS_NAME, 'UEzoS')
+                    print('검색된 음식점 갯수:', len(res_lists))
+
+                    dup_num = 0
+                    for res_list in res_lists:  # 식당명 가져와서 리뷰 가져오는 부분
+                        driver.switch_to.default_content()
+                        iframe_element = driver.find_element(By.ID, "searchIframe")
+                        driver.switch_to.frame(iframe_element)
+
+                        reviews = []
+                        res_names = []
+                        try:
+                            res_name = res_list.find_element(By.CLASS_NAME, 'TYaxT').text
+
+                        except:
+                            print('리스트 반복중 엘레먼트 못가져옴')
+                            continue
+                        try:
+                            if res_name in res_listed:
+                                dup_num = dup_num + 1
+                                print('중복된 카페 제외', dup_num, res_name)
+                                continue
+                        except:
+                            print('파일없음(처음일경우 나옴).')
+
+                        sample = res_list.find_element(By.CLASS_NAME, 'tzwk0')
+                        driver.execute_script("arguments[0].click();", sample)
+                        time.sleep(1)
+
+                        driver.switch_to.default_content()
+                        iframe_element = driver.find_element(By.ID, "entryIframe")
+                        driver.switch_to.frame(iframe_element)
+
+                        time.sleep(1)
+                        review_links = driver.find_elements(By.CLASS_NAME, 'tpj9w')
+                        for link in review_links:
+                            if link.text == '리뷰':
+                                driver.execute_script("arguments[0].click();", link)
+
+                        time.sleep(1)
+                        # 아래로 스크롤 후 더보기 클릭 가장 밑으로 내려간후에
+                        num = 0
+                        schroll_count = 0
+                        for i in range(300):
+                            try:
+                                driver.execute_script("window.scrollTo(0, document.documentElement.scrollHeight);")
+                                time.sleep(0.1)
+                            except:
+                                continue
+
+                            try:
+
+                                sample = driver.find_element(By.CLASS_NAME, 'fvwqf')
+                                if sample:
+                                    driver.execute_script("arguments[0].click();", sample)
+                                    num = 0
+                                    schroll_count += 1
+                                if schroll_count % 5 == 0:
+                                    print(schroll_count)
+                            except:
+                                num += 1
+                                if num == 5:
+                                    break
+
+                        review_class = driver.find_elements(By.CLASS_NAME, 'xHaT3')
+                        print('음식점이름:', res_name, '   리뷰갯수:', len(review_class))
+                        text = ' '
+
+                        for idx, r_view in enumerate(review_class):
+
+                            try:
+                                sample = r_view.find_element(By.CLASS_NAME, 'rvCSr')
+                            except:
+                                text = text + ' ' + re.compile('[^가-힣]').sub(
+                                    ' ', r_view.find_element(By.CLASS_NAME, 'zPfVt').text)
+                                continue
+
+                            driver.execute_script("arguments[0].click();", sample)
+
+                            # time.sleep(0.1)
+                            text = text + ' ' + re.compile('[^가-힣]').sub(' ', r_view.find_element(By.CLASS_NAME,
+                                                                                                  'zPfVt').text)
+                            if idx >500:
+                                break
+
+                        reviews.append(text)
+                        print('{} : 리뷰길이 :{}'.format(res_name, len(text)))
+                        # xHaT3(리뷰클래스)찾아서 더보기가 있으면 더보기 클릭 없으면 리뷰에 있는 텍스트 가져오기
+                        # zPfVt(리뷰)
+                        # rvCSr(리뷰더보기)
+
+                        df_list = pd.DataFrame()
+                        print('저장전:', res_name)
+                        df_list['names'] = [res_name]
+                        df_list['reviews'] = reviews
+                        df_list['addr1'] = list1
+                        df_list['addr2'] = list
+                        print('저장후:', res_name)
+                        print(type(res_name))
+                        print(df_list)
+                        driver.switch_to.default_content()
+                        iframe_element = driver.find_element(By.ID, "searchIframe")
+                        driver.switch_to.frame(iframe_element)
+
+                        time.sleep(0.5)
+
+                        df_list.to_csv('./crawling_data/{}_{}_음식점_{}.csv'.format(list1, list, res_name),
+                                       index=False)
+
+                    driver.close()
+                    time.sleep(2)
+
+    except Exception as e:
+
+        print('Retry code : ',e)
+        try:
+            driver.close()
+            driver.quit()
+
+        except :
+            continue
 
 
-
-        res_name = list.find_element(By.CLASS_NAME,'TYaxT').text
-        res_names.append(res_name)    #음식점명 저장
-        sample = list.find_element(By.CLASS_NAME, 'tzwk0')
-        driver.execute_script("arguments[0].click();", sample)
-        time.sleep(2)
-
-        driver.switch_to.default_content()
-        iframe_element = driver.find_element(By.ID, "entryIframe")
-        driver.switch_to.frame(iframe_element)
-
-        time.sleep(2)
-        review_links  = driver.find_elements(By.CLASS_NAME, 'tpj9w')
-        for link in review_links:
-            if link.text == '리뷰':
-                driver.execute_script("arguments[0].click();", link)
-
-        time.sleep(2)
-        #아래로 스크롤 후 더보기 클릭 가장 밑으로 내려간후에
-        num=0
-        for i in range(100):
-            driver.execute_script("window.scrollTo(0, document.documentElement.scrollHeight);")
-            time.sleep(0.2)
-
-            try:
-                sample = driver.find_element(By.CLASS_NAME,'fvwqf')
-                driver.execute_script("arguments[0].click();", sample)
-            except:
-                num+=1
-                if num == 10:
-                    break
-                continue
-
-        review_class = driver.find_elements(By.CLASS_NAME,'xHaT3')
-        text = ' '
-
-        for r_view in review_class:
-
-            try:
-
-                sample = r_view.find_element(By.CLASS_NAME,'rvCSr')
-
-            except:
-
-                text = text + ' ' + r_view.find_element(By.CLASS_NAME, 'zPfVt').text
-                continue
-
-            driver.execute_script("arguments[0].click();", sample)
-
-            time.sleep(0.2)
-            text = text + ' ' + r_view.find_element(By.CLASS_NAME, 'zPfVt').text
-
-
-        reviews.append(text)
-        # xHaT3(리뷰클래스)찾아서 더보기가 있으면 더보기 클릭 없으면 리뷰에 있는 텍스트 가져오기
-        # zPfVt(리뷰)
-        # rvCSr(리뷰더보기)
-
-        driver.switch_to.default_content()
-        iframe_element = driver.find_element(By.ID, "searchIframe")
-        driver.switch_to.frame(iframe_element)
-        print(res_names,reviews)
-        time.sleep(0.2)
-
-
-
-
-
-    # df = pd.DataFrame({'titles':title_list,'href':href_list})
-    # df.to_csv('./data/movie_href_data.csv',index=False)
-    #
-    # #
