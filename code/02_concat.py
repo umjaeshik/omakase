@@ -1,3 +1,6 @@
+import pandas as pd
+import glob
+
 data_paths = glob.glob('./data_naver/*')
 print(data_paths)
 
