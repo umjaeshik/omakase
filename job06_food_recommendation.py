@@ -23,8 +23,8 @@ with open('./models/tfidf.picle','rb') as f:
     Tfidf = pickle.load(f)
 
 embedding_model = Word2Vec.load('./models/word2vec_res_review.model')
-keyword = ['콩나물','국밥']
-list_mul = [10,7,1]
+keyword = ['돈까스','정식','고급','친절하다']
+list_mul = [10,5,10,10]
 recommendations = []
 simLists=[]
 
@@ -59,9 +59,9 @@ results=df_reviews.iloc[recommendation.index]
 print(results)
 count=0
 for i in range(0,len(results['names'])):
-    if len(results.iloc[i,1])>15000:
+    if len(results.iloc[i,1])>10000:
         if results.iloc[i,2] == '고양시':
-            if count<1:
+            if count<10:
                 count+=1
                 print(results.iloc[i,0])
             else:
