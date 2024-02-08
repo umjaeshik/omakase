@@ -23,7 +23,7 @@ with open('./models/tfidf.picle','rb') as f:
     Tfidf = pickle.load(f)
 
 embedding_model = Word2Vec.load('./models/word2vec_res_review.model')
-keyword = ['돈까스','정식','고급','친절하다']
+keyword = ['분위기','여자친구','작업','예쁘다']
 list_mul = [10,5,10,10]
 recommendations = []
 simLists=[]
