@@ -1,3 +1,4 @@
+#워드를 추가하는 식으로 추가워드에 대한 처리를 진행
 import pandas as pd
 from sklearn.metrics.pairwise import  linear_kernel
 from scipy.io import mmread
