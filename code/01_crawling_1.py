@@ -11,12 +11,11 @@ import functools
 import re
 import os
 import multiprocessing
-functools.lru_cache(maxsize=10000)
+
+#functools.lru_cache(maxsize=10000)
 
 
-proc=[]
 def page_schroll():
-
     num = 0
     schroll_count = 0
     for i in range(300):
@@ -42,48 +41,28 @@ def page_schroll():
 
 
 def click_element(target):
-    sample = res_list.find_element(By.CLASS_NAME, target)
+    sample = driver.find_element(By.CLASS_NAME, target)
     driver.execute_script("arguments[0].click();", sample)
     time.sleep(0.5)
+
+
 def change_iframe(target):
     driver.switch_to.default_content()
     iframe_element = driver.find_element(By.ID, target)
     driver.switch_to.frame(iframe_element)
     time.sleep(0.2)
-def concat(addr1, addr2):
-    print('concat시작')
-    last_data = []
-
-    data_paths = glob.glob('../crawling_data/{}_{}_*'.format(addr1,addr2))
-    df = pd.DataFrame()
-    for path in data_paths:
-        df_temp = pd.read_csv(path)
-        df_temp.dropna(inplace=True)
-        df = pd.concat([df, df_temp])
-    if not df.empty:
-        # Check if 'keyword' column is present in the DataFrame
-        if 'names' in df.columns:
-            print(df['names'].value_counts())
-        else:
-            print("Column 'names' not found in the DataFrame.")
-
-        df.info()
-        df.drop_duplicates(subset='names',inplace=True)
-        df.info()
-        df.to_csv('../{}_{}_음식점_sum.csv'.format(addr1,addr2),index=False)
-        print('concat완료')
-    else:
-        print("DataFrame is empty. No CSV file generated.")
 
 def restaurant_page_down(target_page):
-    while(1):
+    while (1):
         try:
-            pages=driver.find_elements(By.CLASS_NAME,'mBN2s ')
-            for page in pages:
-                if page.text==str(target_page):
+            pages = driver.find_elements(By.CLASS_NAME, 'mBN2s ')
+            for idx, page in enumerate(pages):
+                if page.text == str(target_page):
                     driver.execute_script("arguments[0].click();", page)
                     break
-
+                if idx > int(page.text):
+                    print('찾는 페이지가 없습니다.')
+                    return 1
 
             first_restaurant_list = driver.find_elements(By.CLASS_NAME, 'UEzoS')
             action.move_to_element(first_restaurant_list[-1]).perform()
@@ -93,10 +72,117 @@ def restaurant_page_down(target_page):
             if first_restaurant_list == last_restaurant_list:
                 return 0
             else:
-                #print('page down')
+                # print('page down')
                 continue
         except:
             continue
+
+
+def get_reviews(list1, list2, page,res_index_num):
+    if restaurant_page_down(page):
+        return 1
+
+    res_lists = driver.find_elements(By.CLASS_NAME, 'UEzoS')
+
+    print('검색된 음식점 갯수:', len(res_lists))
+
+    dup_num = 0
+
+    for idy,res_list in enumerate(res_lists[res_index_num:]):  # 식당명 가져와서 리뷰 가져오는 부분
+        change_iframe("searchIframe")
+
+        try:
+            res_name = res_list.find_element(By.CLASS_NAME, 'TYaxT').text
+        except:
+            continue
+
+        sample = res_list.find_element(By.CLASS_NAME, 'tzwk0')
+        driver.execute_script("arguments[0].click();", sample)
+        time.sleep(1)
+
+        change_iframe('entryIframe')
+
+        review_links = driver.find_elements(By.CLASS_NAME, 'tpj9w')
+        for link in review_links:
+            if link.text == '리뷰':
+                driver.execute_script("arguments[0].click();", link)
+                time.sleep(1)
+            if link.text == '사진':
+                pic_url = link.get_attribute('href')
+                print(pic_url)
+
+        time.sleep(1)
+        # 아래로 스크롤 후 더보기 클릭 가장 밑으로 내려간후에
+        page_schroll()
+
+        review_class = driver.find_elements(By.CLASS_NAME, 'xHaT3')
+        print('음식점이름:', res_name, '   리뷰갯수:', len(review_class))
+        text = ' '
+
+        for idx, r_view in enumerate(review_class):
+
+            try:
+                sample = r_view.find_element(By.CLASS_NAME, 'rvCSr')
+            except:
+                text = text + ' ' + re.compile('[^가-힣]').sub(
+                    ' ', r_view.find_element(By.CLASS_NAME, 'zPfVt').text)
+                continue
+
+            driver.execute_script("arguments[0].click();", sample)
+
+            # time.sleep(0.1)
+            text = text + ' ' + re.compile('[^가-힣]').sub(' ', r_view.find_element(By.CLASS_NAME,
+                                                                                  'zPfVt').text)
+            if idx > 700:
+                break
+
+        print('{} : 리뷰길이 :{}'.format(res_name, len(text)))
+        # xHaT3(리뷰클래스)찾아서 더보기가 있으면 더보기 클릭 없으면 리뷰에 있는 텍스트 가져오기
+        # zPfVt(리뷰)
+        # rvCSr(리뷰더보기)
+        try:
+
+            df_list = pd.DataFrame({'names': [res_name], 'reviews': text, 'addr1': list1, 'addr2': list2,
+                                    'review_num': len(review_class), 'pic_url': pic_url})
+
+            df_list.to_csv('../crawling_data/{}_{}_음식점_{}_{}.csv'.format(list1, list2, page, idy+res_index_num),
+                           index=False)
+
+            df_backup_position = pd.DataFrame({'addr1': [list1], 'addr2': list2, 'res_num': idy+res_index_num})
+
+
+            df_backup_position.to_csv('../data_backup_position/{}_{}_position.csv'.format(list1,page),
+                           index=False)
+
+            print('{}_{}_{}_{}_저장완료'.format(list1, list2, page, idy+res_index_num))
+            if res_index_num + idy >=49:
+                res_index_num = 0
+        except:
+            pass
+
+
+def get_index_position(addr1,page):
+    try :
+        position=[]
+
+        imsi = pd.read_csv('../data_backup_position/{}_{}_position.csv'.format(addr1, page))
+
+        index_num = imsi.res_num[0]
+        index1 = addr1_list.index(imsi.addr1[0])
+        index2 = addr2_list.index(imsi.addr2[0])
+        if index_num >= 49:
+            index2 += 1
+            index_num = 0
+        else:
+            index_num += 1
+        position.append(index1)
+        position.append(index2)
+        position.append(index_num)
+        return position
+    except:
+
+        return 1
+
 # f-string
 options = Options()
 key_count = 0
@@ -106,45 +192,54 @@ options.add_argument('lang=ko_KR')
 options.add_argument("disable-infobars")
 options.add_argument("--disable-extensions")
 
-
 prefs = {'profile.default_content_setting_values': {
-    'cookies' : 500, 'images': 0, 'plugins' : 2, 'popups': 2,'geolocation': 2, 'notifications' : 2,
-    'auto_select_certificate': 2, 'fullscreen' : 2, 'mouselock' : 2, 'mixed_script': 2, 'media_stream' : 2,
-    'media_stream_mic' : 2, 'media_stream_camera': 2, 'protocol_handlers' : 2, 'ppapi_broker' : 2,
-    'automatic_downloads': 2, 'midi_sysex' : 2, 'push_messaging' : 2, 'ssl_cert_decisions': 2,
-    'metro_switch_to_desktop' : 2, 'protected_media_identifier': 2, 'app_banner': 2, 'site_engagement' : 2,
-    'durable_storage' : 2}}
+    'cookies': 10, 'images': 0, 'plugins': 2, 'popups': 2, 'geolocation': 2, 'notifications': 2,
+    'auto_select_certificate': 2, 'fullscreen': 2, 'mouselock': 2, 'mixed_script': 2, 'media_stream': 2,
+    'media_stream_mic': 2, 'media_stream_camera': 2, 'protocol_handlers': 2, 'ppapi_broker': 2,
+    'automatic_downloads': 2, 'midi_sysex': 2, 'push_messaging': 2, 'ssl_cert_decisions': 2,
+    'metro_switch_to_desktop': 2, 'protected_media_identifier': 2, 'app_banner': 2, 'site_engagement': 2,
+    'durable_storage': 2}}
 
 options.add_experimental_option('prefs', prefs)
 options.add_argument('headless')
 options.add_argument("disable-gpu")
-
-
-addr1_list=['고양시']
-addr2_list=['덕이동','가좌동','탄현동','대화동','법곳동''일산동','정발산동','주엽동','마두동','문봉동','백석동','사리현동','마두동'
-            ,'장항동','식사동','성석동','마두동','중산동','정발산동','풍동']
-#addr2_list=['덕이동','가좌동','탄현동','대화동','법곳동''일산동','정발산동','주엽동','마두동','문봉동','백석동','사리현동','마두동'
- #           ,'장항동','식사동','성석동','마두동','중산동','정발산동','풍동']
-
 options.add_argument('--start-maximized')
-while(1):
+
+addr1_list = ['파주시']
+addr2_list=[]
+dong=pd.read_csv('../{}_dong_list.csv'.format(addr1_list[0]))
+addr2_list = dong['region'].values.tolist()
+
+
+index1 = 0
+index2 = 0
+res_index_num=0
+
+
+
+page = 5
+res_po=0
+
+while (1):
     try:
+        po=get_index_position(addr1_list[0], page)
+        first = True
 
-        for list1 in addr1_list:
+        if po==1:
+            print("{}_{}_처음실행함".format(addr1_list[0],page))
+        else:
+            print(po)
+            index1 =po[0]
+            index2 =po[1]
+            res_po = int(po[2])
 
-            for list2 in addr2_list:
-
-                concat(list1,list2)
-                try:
-
-                    imsi = pd.read_csv('../{}_{}_음식점_sum.csv'.format(list1,list2))
-                    print(imsi)
-                    res_listed = imsi['names'].to_list()
-                    print('res_listed 의 타입',type(res_listed))
-                    print(res_listed)
-                except:
-                    print('파일없음(처음일경우 나옴.)')
-
+        for list1 in addr1_list[index1:]:
+            for list2 in addr2_list[index2:]:
+                if first:
+                    res_index_num = res_po
+                    first = False
+                else :
+                    res_index_num = 0
                 base_url = 'https://map.naver.com/p/search/{} {} 음식점'.format(list1, list2)
                 driver = wb.Chrome(options=options)
                 # driver.implicitly_wait(0.5)
@@ -155,96 +250,27 @@ while(1):
                 except:
                     print('drivet.get')
                     exit(1)
+
                 change_iframe('searchIframe')
 
                 action = ActionChains(driver)
-
-                for page in range(1,2):
-
-                    restaurant_page_down(page)
-
-                    res_lists = driver.find_elements(By.CLASS_NAME, 'UEzoS')
-                    print('검색된 음식점 갯수:', len(res_lists))
-
-                    dup_num = 0
-                    for res_list in res_lists:  # 식당명 가져와서 리뷰 가져오는 부분
-                        change_iframe("searchIframe")
-
-                        try:
-                            res_name = res_list.find_element(By.CLASS_NAME, 'TYaxT').text
-
-                        except:
-                            print('리스트 반복중 엘레먼트 못가져옴')
-                            continue
-                        try:
-                            if res_name in res_listed:
-                                dup_num = dup_num + 1
-                                print('중복된 카페 제외', dup_num, res_name)
-                                continue
-                        except:
-                            print('파일없음(처음일경우 나옴).')
-
-                        click_element('tzwk0')
-                        time.sleep(1)
-                        change_iframe('entryIframe')
-
-                        review_links = driver.find_elements(By.CLASS_NAME, 'tpj9w')
-                        for link in review_links:
-                            if link.text == '리뷰':
-                                driver.execute_script("arguments[0].click();", link)
-                            if link.text == '사진':
-                                pic_url=link.get_attribute('href')
-                                print(pic_url)
-
-                        time.sleep(1)
-                        # 아래로 스크롤 후 더보기 클릭 가장 밑으로 내려간후에
-                        page_schroll()
-
-                        review_class = driver.find_elements(By.CLASS_NAME, 'xHaT3')
-                        print('음식점이름:', res_name, '   리뷰갯수:', len(review_class))
-                        text = ' '
-
-                        for idx, r_view in enumerate(review_class):
-
-                            try:
-                                sample = r_view.find_element(By.CLASS_NAME, 'rvCSr')
-                            except:
-                                text = text + ' ' + re.compile('[^가-힣]').sub(
-                                    ' ', r_view.find_element(By.CLASS_NAME, 'zPfVt').text)
-                                continue
-
-                            driver.execute_script("arguments[0].click();", sample)
-
-                            # time.sleep(0.1)
-                            text = text + ' ' + re.compile('[^가-힣]').sub(' ', r_view.find_element(By.CLASS_NAME,
-                                                                                                  'zPfVt').text)
-                            if idx >500:
-                                break
-
-
-                        print('{} : 리뷰길이 :{}'.format(res_name, len(text)))
-                        # xHaT3(리뷰클래스)찾아서 더보기가 있으면 더보기 클릭 없으면 리뷰에 있는 텍스트 가져오기
-                        # zPfVt(리뷰)
-                        # rvCSr(리뷰더보기)
-
-                        df_list = pd.DataFrame({'names':[res_name],'reviews':text,'addr1':list1,'addr2':list2,
-                                                'review_num':len(review_class),'pic_url':pic_url})
-
-
-                        df_list.to_csv('../crawling_data/{}_{}_음식점_{}_{}.csv'.format(list1, list2, page, res_name),
-                                       index=False)
-                        print('{}저장완료'.format(res_name))
-                driver.close()
-                time.sleep(2)
-
-    except Exception as e:
-
-        print('Retry code : ',e)
-        try:
+                if get_reviews(list1, list2, page,res_index_num):
+                    print('페이지없음{}_{}_{}'.format(list1, list2, page))
             driver.close()
             driver.quit()
 
-        except :
+
+
+    except Exception as e:
+
+        print('RETRY CODE: ', e)
+        try:
+            driver.close()
+            driver.quit()
+        except:
             continue
+
+
+
 
 
