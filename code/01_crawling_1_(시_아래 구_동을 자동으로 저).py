@@ -75,7 +75,7 @@ def restaurant_page_down(target_page):
                 # print('page down')
                 continue
         except:
-            continue
+            return 1
 
 
 def get_reviews(list1, list2, page,res_index_num):
@@ -217,7 +217,7 @@ res_index_num=0
 
 
 
-page = 5
+page = 1
 res_po=0
 
 while (1):
